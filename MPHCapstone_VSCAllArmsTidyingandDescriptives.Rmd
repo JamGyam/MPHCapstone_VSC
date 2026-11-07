@@ -1,0 +1,185 @@
+---
+title: "Capstone_VSC_Code"
+author: "Emmanuella Agyeman Tuffour"
+date: "2026-11-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+pacman::p_load(tidyverse, dplyr, readxl, table1, DiagrammeR, rsvg, flextable, officer)
+```
+
+Reading in data
+```{r}
+origdata <- 
+  read_excel('/Users/gyaama/Library/CloudStorage/Box-Box/Capstone/Capstone Data/CapstoneDataMerged_WorkingCopy.xlsx')
+
+#visualize data in a tibble
+head(origdata)
+
+```
+
+Tidying Data further, for variables of interest for descriptives
+1-Selecting rows necessary for descriptives table
+
+```{r}
+
+descriptivesdata <- origdata |>
+  select(c("record_id", "arm","Age", "Sex","q24c", "Race/Ethnicity", "SelfReportedHealth", "Confidence_Internet"))
+
+head(descriptivesdata)
+```
+
+2-Running basic summary statistics, frequencies on descriptivesdata
+#Age
+```{r}
+
+summary(descriptivesdata$Age)
+
+table(descriptivesdata$Age)
+```
+
+#Sex
+```{r}
+
+table(descriptivesdata$Sex)
+```
+
+
+#Race/Eth
+```{r}
+table(descriptivesdata$`Race/Ethnicity`)
+```
+
+#Self Reported Health
+
+```{r}
+table(descriptivesdata$SelfReportedHealth)
+```
+
+#Internet Confidence
+```{r}
+table(descriptivesdata$Confidence_Internet)
+```
+
+
+3-Transforming Age into Age ranges varibale
+```{r}
+descriptivesdata <- descriptivesdata |>
+  mutate(AgeRange = case_when(
+    Age <= 65 ~ "60-65",
+    Age >65 & Age <=70 ~ "66-70",
+    Age >70 & Age <=75 ~ "71-75",
+    Age >75 & Age <=80 ~ "76-80",
+    Age >80  ~ "80+",
+    TRUE ~ NA_character_
+  ))
+
+table(descriptivesdata$AgeRange, useNA = "ifany")
+
+```
+
+
+4-Tranforming Race/Eth
+```{r}
+descriptivesdata <- descriptivesdata |>
+  mutate(Race_Eth = case_when(
+   `Race/Ethnicity` == "Black" ~ "Black",
+   `Race/Ethnicity` == "White" ~ "White",
+   `Race/Ethnicity` == "NA" ~ "NA",
+    TRUE ~ "Other"
+  ))
+
+table(descriptivesdata$Race_Eth, useNA = "ifany")
+```
+
+
+5-Transforming rural /urban, using RUCA classification
+```{r}
+#importing MO RUCA dataset
+
+ruca <- read_excel('/Users/gyaama/Library/CloudStorage/Box-Box/Capstone/Capstone Data/IL_MOZipcodesRUCA.xlsx')
+
+ruca_clean <- ruca |>
+  mutate(zipcode = as.character(ZIPCode),
+        ) |>
+  select(zipcode, PrimaryRUCA)
+
+#left join or w/e
+
+descriptivesdata <- descriptivesdata |>
+  mutate(zipcode = as.character(q24c)) |>
+  left_join(ruca_clean, by = "zipcode")
+
+
+#categoriizng
+
+# 4. Classify the codes
+descriptivesdata <- descriptivesdata |>
+  mutate(Rurality = case_when(
+    is.na(PrimaryRUCA) ~ NA_character_,
+    PrimaryRUCA <= 3 ~ "Urban",
+    PrimaryRUCA <= 6 ~ "Semirural",
+    PrimaryRUCA <= 10 ~ "Rural"
+  ))
+
+table(descriptivesdata$Rurality, useNA = "ifany")
+sum(is.na(descriptivesdata$PrimaryRUCA))
+```
+
+6-Setting levels and labels
+```{r}
+descriptivesdata <- descriptivesdata |>
+  mutate(
+    AgeRange = factor(AgeRange,
+                      levels = c("60-65", "66-70", "71-75", "76-80", "81+")),
+    Race_Eth = factor(Race_Eth,
+                      levels = c("White", "Black", "Other", "NA")),
+    Rurality = factor(Rurality,
+                      levels = c("Urban", "Semirural", "Rural")),
+    Confidence_Internet = factor(Confidence_Internet,
+                                 levels = c("Very confident", "Somewhat confident", "A little confident", "Only a litle confident", "NA"),
+                                 labels = c("Very Confident", "Somewhat Confident", "A Little Confident", "Only a Little Confident", "NA")),
+    SelfReportedHealth = factor(SelfReportedHealth,
+                                      levels = c("Excellent", "Good", "Very Good", "Fair", "Poor")))
+```
+
+
+6-Building Table_General
+```{r}
+table1(~ AgeRange + Sex + Rurality + Race_Eth  + Confidence_Internet + SelfReportedHealth, descriptivesdata, topclass = "Rtable1-zebra") 
+
+```
+
+7- Table 1
+```{r}
+Table1<- table1(~ AgeRange + Sex + Rurality + Race_Eth  + Confidence_Internet + SelfReportedHealth|arm, overall = "Total", rowlabelhead = "Variables", descriptivesdata) 
+
+print(Table1)
+```
+
+8- Labels
+
+```{r}
+label(descriptivesdata$AgeRange) <- "Age (years)"
+label(descriptivesdata$Sex) <- "Sex"
+label(descriptivesdata$Race_Eth) <- "Race/Ethnicity"
+label(descriptivesdata$Confidence_Internet) <- "Digital Confidence "
+label(descriptivesdata$SelfReportedHealth) <- "Self Reported Health Status"
+label(descriptivesdata$arm) <- "Intervention Arm"
+label(descriptivesdata$Rurality) <- "Rural Status"
+```
+
+
+9- Export table into word docx
+```{r}
+ft <- t1flex(Table1) # convert to a flextable, easier to format
+
+doc <- read_docx() %>% # creates word doc object in R and then adds flextable to it
+  body_add_flextable(ft)
+
+print(doc, target = "Table 1_fullset.docx") 
+
+getwd()
+```
+
